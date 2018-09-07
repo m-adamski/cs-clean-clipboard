@@ -1,2 +1,5 @@
-# cs-clean-clipboard
-A simple C# application to clean the clipboard after a specified time
+# Clean Clipboard
+A simple C# application to clean the clipboard after a specified time.
+
+## License
+MIT
