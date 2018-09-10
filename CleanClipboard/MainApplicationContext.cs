@@ -2,7 +2,7 @@
 using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Threading.Tasks;
+using System.Threading;
 using System.Windows.Forms;
 
 namespace CleanClipboard
@@ -22,12 +22,14 @@ namespace CleanClipboard
         private ToolStripMenuItem notifyMenuExitItem;
 
         // Define private Notification Form
-        private static NotificationForm _form = new NotificationForm();
+        private NotificationForm _form;
 
         public MainApplicationContext()
         {
             InitializeComponent();
             CheckSettings();
+
+            this._form = new NotificationForm(this.notifyIcon);
         }
 
         private void InitializeComponent()
@@ -193,8 +195,14 @@ namespace CleanClipboard
 
         private class NotificationForm : Form
         {
-            public NotificationForm()
+
+            private NotifyIcon notifyIcon;
+
+            public NotificationForm(NotifyIcon notifyIcon)
             {
+                this.notifyIcon = notifyIcon;
+
+                // Register Clipboard Listener
                 NativeMethods.SetParent(Handle, NativeMethods.HWND_MESSAGE);
                 NativeMethods.AddClipboardFormatListener(Handle);
             }
@@ -210,40 +218,46 @@ namespace CleanClipboard
 
             private void HandleClipboardChange()
             {
-                // Get stored delay time
-                int delayTime = Settings.Default.delayTime;
 
-                async void clearAction()
+                // Check if Clipboard is not already empty
+                if (Clipboard.GetText() != "")
                 {
-                    await Task.Delay(delayTime * 1000);
-                    Clipboard.Clear(); // TODO: Error
-                }
+                    // Get stored delay time
+                    int delayTime = Settings.Default.delayTime;
 
-                // Check if delayTime is not set to zero = Off
-                if (delayTime != 0)
-                {
-                    Task timeoutTask = Task.Factory.StartNew(clearAction);
-                    timeoutTask.Wait();
+                    // Check if delayTime is not set to zero = Off
+                    if (delayTime != 0)
+                    {
+                        Thread timeoutThread = new Thread(delegate ()
+                        {
+                            Thread.Sleep(delayTime * 1000);
+                            Clipboard.Clear();
+
+                            // Show notification
+                            this.notifyIcon.ShowBalloonTip(1000, "Clean Clipboard", "The clipboard has been cleaned", ToolTipIcon.Info);
+                        });
+                        timeoutThread.SetApartmentState(ApartmentState.STA);
+                        timeoutThread.Start();
+                        timeoutThread.Join();
+                    }
                 }
             }
         }
     }
 }
 
+/// <summary>
+/// See https://gist.github.com/glombard/7986317
+/// </summary>
 internal static class NativeMethods
 {
-    // See https://gist.github.com/glombard/7986317
-    // See http://msdn.microsoft.com/en-us/library/ms649021%28v=vs.85%29.aspx
     public const int WM_CLIPBOARDUPDATE = 0x031D;
     public static IntPtr HWND_MESSAGE = new IntPtr(-3);
 
-    // See http://msdn.microsoft.com/en-us/library/ms632599%28VS.85%29.aspx#message_only
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool AddClipboardFormatListener(IntPtr hwnd);
 
-    // See http://msdn.microsoft.com/en-us/library/ms633541%28v=vs.85%29.aspx
-    // See http://msdn.microsoft.com/en-us/library/ms649033%28VS.85%29.aspx
     [DllImport("user32.dll", SetLastError = true)]
     public static extern IntPtr SetParent(IntPtr hWndChild, IntPtr hWndNewParent);
 }
